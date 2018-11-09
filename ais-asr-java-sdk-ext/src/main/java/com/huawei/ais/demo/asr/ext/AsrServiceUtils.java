@@ -2,21 +2,20 @@ package com.huawei.ais.demo.asr.ext;
 
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
 import com.huawei.ais.common.AuthInfo;
 import com.huawei.ais.common.ProxyHostInfo;
+import com.huawei.ais.demo.asr.CommonUtils;
 import com.huawei.ais.demo.asr.Config;
 import com.huawei.ais.demo.obs.SimpleObsClient;
 import com.huawei.ais.sdk.AisAccess;
+import com.huawei.ais.sdk.AisAccessWithProxy;
 
 /**
  * 语音识别服务调用工具类，管理两个线程池<p/>
@@ -41,14 +40,6 @@ public class AsrServiceUtils {
     }
 
     /**
-     * 获取AsrServiceUtils实例（单例）
-     * @return AsrServiceUtils实例
-     */
-    public static AsrServiceUtils getInstance() {
-        return SingletonConstructor.asrServiceUtils;
-    }
-
-    /**
      * 调用语音识别服务
      *
      * @param audioUrl    音频的文件的url
@@ -64,8 +55,9 @@ public class AsrServiceUtils {
      * 销毁AsrServiceUtils控制的资源
      */
     public void destroy() {
-        destroyExecutors(submitJobExecutors);
-        destroyExecutors(callbackExecutors);
+        CallbackTask.destroyCallbackFailedTaskManager();
+        CommonUtils.destroyExecutors(submitJobExecutors, "submitJobExecutors");
+        CommonUtils.destroyExecutors(callbackExecutors, "callbackExecutors");
     }
 
     private void init() {
@@ -89,23 +81,7 @@ public class AsrServiceUtils {
                 CONFIG.getSubmitPoolKeepAliveTime(),
                 TimeUnit.SECONDS,
                 new ArrayBlockingQueue<>(CONFIG.getSubmitPoolQueueSize()),
-                new ThreadFactory() {
-                    final AtomicLong count = new AtomicLong(0);
-
-                    @Override
-                    public Thread newThread(Runnable r) {
-                        Thread thread = Executors.defaultThreadFactory().newThread(r);
-                        thread.setDaemon(false);
-                        thread.setName(String.format("asr-sdk-submit-job-%d", count.getAndIncrement()));
-                        thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
-                            @Override
-                            public void uncaughtException(Thread t, Throwable e) {
-                                LOGGER.error("Uncaught exception in thread " + t.getName(), e);
-                            }
-                        });
-                        return thread;
-                    }
-                },
+                CommonUtils.ThreadFactoryConstructor(true, "asr-sdk-submit-job-%d"),
                 new ThreadPoolExecutor.AbortPolicy());
 
         //初始callbackExecutors
@@ -115,46 +91,23 @@ public class AsrServiceUtils {
                 CONFIG.getCallbackPoolKeepAliveTime(),
                 TimeUnit.SECONDS,
                 new ArrayBlockingQueue<>(CONFIG.getCallbackPoolQueueSize()),
-                new ThreadFactory() {
-                    final AtomicLong count = new AtomicLong(0);
-
-                    @Override
-                    public Thread newThread(Runnable r) {
-                        Thread thread = Executors.defaultThreadFactory().newThread(r);
-                        thread.setDaemon(false);
-                        thread.setName(String.format("asr-sdk-callback-%d", count.getAndIncrement()));
-                        thread.setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
-                            @Override
-                            public void uncaughtException(Thread t, Throwable e) {
-                                LOGGER.error("Uncaught exception in thread " + t.getName(), e);
-                            }
-                        });
-                        return thread;
-                    }
-                },
+                CommonUtils.ThreadFactoryConstructor(true, "asr-sdk-callback-%d"),
                 new ThreadPoolExecutor.AbortPolicy());
+
+        CallbackTask.initCallbackFailedTaskManager(callbackExecutors);
         //创建obs桶
         simpleObsClient.createBucket(CONFIG.getObsBucketName());
 
         LOGGER.info("AsrServiceUtils init successfully.");
     }
 
-    private void destroyExecutors(ExecutorService executorService) {
-        if (executorService != null) {
-            LOGGER.info("Shutdown thread pool of image moderation.");
-            executorService.shutdown();
-            try {
-                if (!executorService.awaitTermination(1, TimeUnit.MINUTES)) {
-                    LOGGER.error("Wait for all asr tasks finish timeout(1 min), call shutdownNow().");
-                    executorService.shutdownNow();
-                } else {
-                    LOGGER.info("Terminate thread pool of asr successfully");
-                }
-            } catch (InterruptedException e) {
-                LOGGER.error("Wait for all asr tasks finish interrupted, call shutdownNow().");
-                executorService.shutdownNow();
-            }
-        }
+    /**
+     * 获取AsrServiceUtils实例（单例）
+     *
+     * @return AsrServiceUtils实例
+     */
+    public static AsrServiceUtils getInstance() {
+        return SingletonConstructor.asrServiceUtils;
     }
 
     static class SingletonConstructor {

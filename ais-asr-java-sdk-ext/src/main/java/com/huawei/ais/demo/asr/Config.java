@@ -28,20 +28,14 @@ public class Config {
 
     private int callbackPoolCoreSize;
     private int callbackPoolMaxSize;
-
     private int callbackPoolKeepAliveTime;
     private int callbackPoolQueueSize;
 
+    private int retryCallbackTimes;
+    private int retryCallbackInterval;
+
     private Config() {
         init("config.properties");
-    }
-
-    public static Config getInstance() {
-        return SingletonConstructor.config;
-    }
-
-    public static void main(String[] args) {
-        System.out.println(getInstance().getAk());
     }
 
     private void init(String propertyFilePath) {
@@ -73,6 +67,9 @@ public class Config {
             setCallbackPoolMaxSize(propertiesConfig.getInt("callback.pool.max.size", 8 * availableProcessors));
             setCallbackPoolKeepAliveTime(propertiesConfig.getInt("callback.pool.keepalive.seconds", 60));
             setCallbackPoolQueueSize(propertiesConfig.getInt("callback.pool.queue.size", 1000));
+
+            setRetryCallbackTimes(propertiesConfig.getInt("callback.retry.times", 0));
+            setRetryCallbackInterval(propertiesConfig.getInt("callback.retry.interval", 30));
 
         } catch (ConfigurationException e) {
             throw new RuntimeException("config.properties not found.", e);
@@ -223,6 +220,30 @@ public class Config {
 
     private void setCallbackPoolQueueSize(int callbackPoolQueueSize) {
         this.callbackPoolQueueSize = callbackPoolQueueSize;
+    }
+
+    public int getRetryCallbackTimes() {
+        return retryCallbackTimes;
+    }
+
+    private void setRetryCallbackTimes(int retryCallbackTimes) {
+        this.retryCallbackTimes = retryCallbackTimes;
+    }
+
+    public int getRetryCallbackInterval() {
+        return retryCallbackInterval;
+    }
+
+    private void setRetryCallbackInterval(int retryCallbackInterval) {
+        this.retryCallbackInterval = retryCallbackInterval;
+    }
+
+    public static Config getInstance() {
+        return SingletonConstructor.config;
+    }
+
+    public static void main(String[] args) {
+        System.out.println(getInstance().getAk());
     }
 
     static class SingletonConstructor {

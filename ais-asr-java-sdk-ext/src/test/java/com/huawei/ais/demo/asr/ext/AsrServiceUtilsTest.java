@@ -2,13 +2,14 @@ package com.huawei.ais.demo.asr.ext;
 
 import java.io.IOException;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.Test;
 
 public class AsrServiceUtilsTest {
 
     @Test
-    public void test() throws IOException {
+    public void test() throws IOException, InterruptedException {
         AsrServiceUtils asrServiceUtils = AsrServiceUtils.getInstance();
 
         Future<String> future = asrServiceUtils.callAsrService("http://47.92.133.100:8089/video/2006%E5%B9%B4VA0.mp3",
@@ -21,6 +22,8 @@ public class AsrServiceUtilsTest {
         //System.out.println("-------------jobId1=" + future1.get());
         //System.out.println("-------------jobId2=" + future2.get());
 
-        System.in.read();
+        //模拟进程运行一段时间后被停止，释放资源
+        Thread.sleep(TimeUnit.MILLISECONDS.convert(6, TimeUnit.MINUTES));
+        asrServiceUtils.destroy();
     }
 }
