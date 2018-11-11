@@ -16,6 +16,7 @@ import org.apache.http.Header;
 import org.apache.http.HttpResponse;
 import org.apache.http.entity.ContentType;
 import org.apache.http.message.BasicHeader;
+import org.apache.http.util.EntityUtils;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.huawei.ais.demo.HttpJsonDataUtils;
@@ -57,32 +58,34 @@ class CallbackTask implements Runnable {
 
     @Override
     public void run() {
+
+        int retryTimes = 0;
+        if (callbackFailedTasks.containsKey(this)) {
+            int retriedTimes = callbackFailedTasks.get(this).getRetriedTimes();
+            retryTimes = retriedTimes + 1;
+            LOGGER.info(String.format("Retry[%d/%d] callback for job[%s]", retryTimes, CONFIG.getRetryCallbackTimes(), jobId));
+        }
+        boolean callbackSuccess = false;
         try {
-            int retryTimes = 0;
-            if (callbackFailedTasks.containsKey(this)) {
-                int retriedTimes = callbackFailedTasks.get(this).getRetriedTimes();
-                retryTimes = retriedTimes + 1;
-                LOGGER.info(String.format("Retry[%d/%d] callback for job[%s]", retryTimes, CONFIG.getRetryCallbackTimes(), jobId));
-            }
-
             Object result = queryJobResult(audioUrl, jobId);
-            boolean callbackSuccess = callback(audioUrl, callbackUrl, jobId, result);
+            callbackSuccess = callback(audioUrl, callbackUrl, jobId, result);
+        } catch (IOException e) {
+            LOGGER.error("Callback error:", e);
+        }
 
-            if (callbackSuccess) {
+        if (callbackSuccess) {
+            callbackFailedTasks.remove(this);
+        } else {
+            if (retryTimes >= CONFIG.getRetryCallbackTimes()) {
+                LOGGER.error(String.format("Retry[%d/%d] callback for job[%s], give up!", retryTimes,
+                        CONFIG.getRetryCallbackTimes(), jobId));
                 callbackFailedTasks.remove(this);
             } else {
-                if (retryTimes >= CONFIG.getRetryCallbackTimes()) {
-                    LOGGER.error(String.format("Retry[%d/%d] callback for job[%s], give up!", retryTimes,
-                            CONFIG.getRetryCallbackTimes(), jobId));
-                    callbackFailedTasks.remove(this);
-                } else {
-                    LOGGER.error(String.format("Callback failed for job[%s], will try later.", jobId));
-                    callbackFailedTasks.put(this, new RetryRecord(retryTimes));
-                }
+                LOGGER.error(String.format("Callback failed for job[%s], will try later.", jobId));
+                callbackFailedTasks.put(this, new RetryRecord(retryTimes));
             }
-        } catch (IOException e) {
-            LOGGER.error("");
         }
+
     }
 
     private Object queryJobResult(String audioUrl, String jobId) throws IOException {
@@ -94,8 +97,9 @@ class CallbackTask implements Runnable {
             HttpResponse getResponse = aisAccessClient.get(url);
             if (!HttpJsonDataUtils.isOKResponded(getResponse)) {
                 LOGGER.error(String.format("Query job[%s] result failed, associated audio_url:%s", jobId, audioUrl));
-                LOGGER.info(HttpJsonDataUtils.responseToString(getResponse));
-                break;
+                String responseStr = EntityUtils.toString(getResponse.getEntity(), "UTF-8");
+                LOGGER.info(responseStr);
+                return responseStr;
             }
             GetResultRes jobResult
                     = HttpJsonDataUtils.getResponseObject(getResponse, GetResultRes.class, JSON_ROOT);
@@ -137,7 +141,7 @@ class CallbackTask implements Runnable {
         if (!HttpJsonDataUtils.isOKResponded(response)) {
             LOGGER.error(String.format("Callback for job[%s] failed, associated audio_url:%s", jobId, audioUrl));
             LOGGER.debug("Request body:" + HttpJsonDataUtils.objectToJsonString(result));
-            LOGGER.error(HttpJsonDataUtils.responseToString(response));
+            LOGGER.error(EntityUtils.toString(response.getEntity(), "UTF-8"));
             return false;
         } else {
             LOGGER.info(String.format("Callback for job[%s] done.", jobId));

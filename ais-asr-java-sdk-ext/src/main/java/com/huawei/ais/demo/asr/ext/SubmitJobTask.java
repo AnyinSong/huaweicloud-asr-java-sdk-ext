@@ -12,6 +12,7 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.http.HttpResponse;
+import org.apache.http.util.EntityUtils;
 
 import com.huawei.ais.demo.HttpJsonDataUtils;
 import com.huawei.ais.demo.asr.Config;
@@ -88,7 +89,7 @@ class SubmitJobTask implements Callable<String> {
         if (!HttpJsonDataUtils.isOKResponded(response)) {
             LOGGER.error(String.format("Submit the job failed, audio_url:%s obs_url:%s", audio, obsUrl));
             LOGGER.debug("Request body:" + HttpJsonDataUtils.objectToPrettyJsonString(submitReq));
-            String responseStr = HttpJsonDataUtils.responseToString(response);
+            String responseStr = EntityUtils.toString(response.getEntity(), "UTF-8");
             LOGGER.error(responseStr);
 
         }
